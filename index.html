@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa com Informações de Indicadores</title>
+
+    <!-- Incluindo o CSS da ArcGIS API -->
+    <link rel="stylesheet" href="https://js.arcgis.com/4.23/esri/themes/light/main.css">
+
+    <!-- Incluindo o JavaScript da ArcGIS API -->
+    <script src="https://js.arcgis.com/4.23/"></script>
+</head>
+<body>
+    <!-- Filtro para selecionar a cidade -->
+    <div style="padding: 10px;">
+        <label for="cidadeSelect">Escolha a cidade:</label>
+        <select id="cidadeSelect">
+            <option value="">Selecione uma cidade</option>
+            <!-- As opções de cidades serão geradas dinamicamente -->
+        </select>
+    </div>
+
+    <!-- Filtro para selecionar o indicador -->
+    <div style="padding: 10px;">
+        <label for="indicadorSelect">Escolha o indicador:</label>
+        <select id="indicadorSelect">
+            <option value="">Selecione um indicador</option>
+            <!-- As opções de indicadores serão geradas dinamicamente -->
+        </select>
+    </div>
+
+    <!-- Div onde o mapa será exibido -->
+    <div id="viewDiv" style="width: 100%; height: 80vh;"></div>
+
+    <script>
+        require([
+            "esri/Map",
+            "esri/views/MapView",
+            "esri/layers/GraphicsLayer",
+            "esri/Graphic",  
+            "esri/geometry/Point",
+            "esri/symbols/SimpleMarkerSymbol"
+        ], function(Map, MapView, GraphicsLayer, Graphic, Point, SimpleMarkerSymbol) {  
+
+            // Função para carregar os dados e gerar as opções de cidade e indicador
+            async function loadData() {
+                try {
+                    // Carregar o arquivo JSON
+                    const response = await fetch('response_1743172626178.json');  // Caminho do arquivo JSON
+
+                    // Verifique se a resposta foi bem-sucedida
+                    if (!response.ok) {
+                        throw new Error("Erro ao carregar o arquivo JSON. Código de status: " + response.status);
+                    }
+
+                    const data = await response.json();
+
+                    // Gerar opções de cidade baseadas no campo nomeCidade do JSON
+                    const cidadeSelect = document.getElementById("cidadeSelect");
+                    const cidades = [...new Set(data.map(item => item.nomeCidade))];  // Cria uma lista única de cidades
+
+                    // Adiciona as opções de cidade ao select
+                    cidades.forEach(cidade => {
+                        let option = document.createElement("option");
+                        option.value = cidade;
+                        option.textContent = cidade;
+                        cidadeSelect.appendChild(option);
+                    });
+
+                    // Gerar opções de indicador baseadas no campo nomeIndicador do JSON
+                    const indicadorSelect = document.getElementById("indicadorSelect");
+                    const indicadores = [...new Set(data.map(item => item.nomeIndicador))];  // Cria uma lista única de indicadores
+
+                    // Adiciona as opções de indicador ao select
+                    indicadores.forEach(indicador => {
+                        let option = document.createElement("option");
+                        option.value = indicador;
+                        option.textContent = indicador;
+                        indicadorSelect.appendChild(option);
+                    });
+
+                    // Carregar todos os dados no mapa inicialmente
+                    loadMapData(data);  // Carrega todos os dados inicialmente
+
+                    // Atualizar o mapa quando uma nova cidade ou indicador for selecionado
+                    cidadeSelect.addEventListener("change", function(event) {
+                        var selectedCity = event.target.value;
+                        var selectedIndicator = indicadorSelect.value;
+                        loadMapData(data, selectedCity, selectedIndicator);  // Filtra os dados pela cidade e indicador selecionados
+
+                        // Zoom e centro do mapa para a cidade selecionada
+                        if (selectedCity) {
+                            var cityData = data.find(item => item.nomeCidade === selectedCity);
+                            if (cityData) {
+                                view.center = [cityData.longitude, cityData.latitude];  // Centro no ponto da cidade
+                                view.zoom = 12;  // Ajuste o nível de zoom conforme necessário
+                            }
+                        }
+                    });
+
+                    indicadorSelect.addEventListener("change", function(event) {
+                        var selectedCity = cidadeSelect.value;
+                        var selectedIndicator = event.target.value;
+                        loadMapData(data, selectedCity, selectedIndicator);  // Filtra os dados pela cidade e indicador selecionados
+                    });
+
+                } catch (error) {
+                    console.error("Erro ao carregar ou processar os dados JSON:", error);
+                }
+            }
+
+            // Função para exibir dados no mapa com base nos filtros aplicados
+            function loadMapData(data, cityFilter = '', indicatorFilter = '') {
+                // Limpa os gráficos anteriores
+                graphicsLayer.removeAll();
+
+                // Filtra os dados pela cidade e indicador selecionados
+                const filteredData = data.filter(item => 
+                    (cityFilter ? item.nomeCidade === cityFilter : true) &&
+                    (indicatorFilter ? item.nomeIndicador === indicatorFilter : true)
+                );
+
+                // Iterando sobre os dados filtrados
+                filteredData.forEach(item => {
+                    // Verificando se as coordenadas estão presentes e válidas
+                    if (item.longitude && item.latitude) {
+                        // Criar ponto com as coordenadas do JSON
+                        var point = new Point({
+                            x: item.longitude,  // Longitude = x
+                            y: item.latitude    // Latitude = y
+                        });
+
+                        // Símbolo do marcador (ponto vermelho)
+                        var simpleMarkerSymbol = new SimpleMarkerSymbol({
+                            color: [255, 0, 0],  // Cor vermelha
+                            size: "12px"  // Tamanho do marcador
+                        });
+
+                        // Criar gráfico com o ponto
+                        var pointGraphic = new Graphic({
+                            geometry: point,
+                            symbol: simpleMarkerSymbol,
+                            attributes: item,
+                            popupTemplate: {
+                                title: "{nomeCidade} - {nomeIndicador}",
+                                content: "<b>Valor Preenchido:</b> {valorPreenchido}<br><b>Localização:</b> Latitude: {latitude}, Longitude: {longitude}"
+                            }
+                        });
+
+                        // Adicionar o gráfico (ponto) à camada
+                        graphicsLayer.add(pointGraphic);
+                    } else {
+                        console.warn("Dados de coordenadas ausentes para: ", item.nomeCidade);
+                    }
+                });
+            }
+
+            // Carregar os dados e preencher as cidades e indicadores no filtro
+            loadData();
+
+        });
+    </script>
+</body>
+</html>
